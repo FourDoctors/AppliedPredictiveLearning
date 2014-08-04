@@ -1,0 +1,99 @@
+Linear Regression
+========================================================
+
+
+
+```{r soluData}
+library(AppliedPredictiveModeling)
+data(solubility)
+ls(pattern="solT")
+dim(solTrainXtrans)
+trainSol <- solTrainXtrans
+trainSol$Solubility <- solTrainY
+```
+Lets start modeling
+```{r linreg}
+lm.all <- lm(Solubility ~ ., data=trainSol)
+summary(lm.all)
+lmPred.all <- predict(lm.all, newdata=solTestXtrans)
+lmValues.all <- data.frame(obs=solTestY, pred=lmPred.all)
+defaultSummary(lmValues.all)
+```
+Robust linear regression,
+```{r robustreg}
+library(MASS)
+rlm.all <- rlm(Solubility ~ ., data=trainSol)
+summary(rlm.all)
+rlmPred.all <- predict(rlm.all, newdata=solTestXtrans)
+rlmValues.all <- data.frame(obs=solTestY, pred=rlmPred.all)
+defaultSummary(rlmValues.all)
+```
+Doesn't do any better
+
+Cross validation
+```{r crossvalidate}
+ctrl <- trainControl(method="cv", number=10)
+set.seed(100)
+lm.cv.all <- train(x=solTrainXtrans, y=solTrainY, method="lm", trControl=ctrl)
+lm.cv.all
+```
+Plot results
+```{r plots}
+xyplot(solTrainY ~ predict(lm.cv.all), 
+       type=c("p", "g"),
+       xlab="Predicted",
+       ylab="Observed")
+
+xyplot(resid(lm.cv.all) ~ predict(lm.cv.all),
+       type=c("p", "g"),
+       xlab="Predicted",
+       ylab="Residuals")
+```
+Make a smaller model by removing correlated variables
+```{r remCor}
+corThresh <- 0.75
+tooHigh <- findCorrelation(cor(solTrainXtrans), corThresh)
+corrPred <- names(solTrainXtrans)[tooHigh]
+trainXfltrd <- solTrainXtrans[ , -tooHigh]
+testXfltrd <- solTestXtrans[ , -tooHigh]
+set.seed(100)
+lm.cv.fltrd <- train(x=trainXfltrd, y=solTrainY, method="lm", trControl=ctrl)
+lm.cv.fltrd
+```
+We can also use rlm, but that model does not tolerate singular matrices, so we will have to PCA the data 
+first
+```{r trainRlm}
+set.seed(100)
+lm.cv.rlm <- train(solTrainXtrans, solTrainY,
+                   method="rlm",
+                   preProcess="pca",
+                   trControl=ctrl)
+lm.cv.rlm
+```
+
+Lets compare the all and fltrd models over the test set
+```{r compareAllFltrdRlm}
+pred.cv.all <- predict(lm.cv.all, newdata=solTestXtrans)
+pred.cv.fltrd <- predict(lm.cv.fltrd, newdata=testXfltrd)
+pred.cv.rlm <- predict(lm.cv.rlm, newdata=solTestXtrans)
+defaultSummary(data.frame(obs=solTestY, pred=pred.cv.all))
+defaultSummary(data.frame(obs=solTestY, pred=pred.cv.fltrd))
+defaultSummary(data.frame(obs=solTestY, pred=pred.cv.rlm))
+```
+
+
+
+##Partial Least Squares
+
+```{r pls}
+library(pls)
+plsFit <- plsr(Solubility ~ ., data=trainSol)
+perf.pls <- do.call("rbind", lapply(1:plsFit$ncomp, function(n){
+                      pred.pls <- as.vector(predict(plsFit, newdata=solTestXtrans, ncomp=n))
+                      defaultSummary(data.frame(obs=solTestY, pred=pred.pls))
+                  }))
+
+Ridge-regression
+```{r ridge}
+library(elasticnet)
+ridgeModel <- enet(x=as.matrix(solTrainXtrans), y=solTrainY, lambda=0.001)
