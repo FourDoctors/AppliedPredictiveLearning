@@ -9,3 +9,4 @@ the data. The book tries to do this, using some exploratory analysis in the firs
 just reading and running the code printed in the book doesn't help. Instead, I could write down the methods to be used, and rough hints about the R functions that the book mentions, and then try to do my own analysis. The exploratory part will give me some insights about the methods and the data as well, but for the moment I will skip it. Besides, it should sit in a different file. Here I will begin with linear regression. 
 
 ##Solubility Data
+Analysis of solubility data falls into the general research theme of quantitative structure activity relationship ( QSAR). I will write about QSAR in a wiki file.
