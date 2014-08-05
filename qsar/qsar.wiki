@@ -1,0 +1,62 @@
+%toc Quantitative Structure Activity Relationship
+
+
+= Data sources and Reviews =
+One of the papers cited in the Applied Predictive Modeling (APM) book cites 
+the PHYSPROP database. A google search for PHYSPROP database leads to the
+website of [[ http://www.srcinc.com/what-we-do/environmental/scientific-databases.html|Scientific Databases]].
+
+I have not been able to find any good comprehensive reviews online. Some books
+are mentioned, which I will not try to seek. One paper, [[ http://proline.physics.iisc.ernet.in/home/images/8/8e/SE-302-compmethods_qsar.pdf|Computational Methods in Developing Quantitative Structure-Activity Relationships (QSAR): A Review ]] 
+seems to provide enough background.
+
+
+= What is QSAR =
+The QSAR methodology focuses on finding a model, which allows for correlating the activity to structure within a family of compounds. The review mentioned above aims to be a guide through the diversity of the tecniques and algorithms for developing successful QSAR models. 
+
+The first step in the QSAR methodology is to extract descriptors of the molecular structure. The structure is encoded as a set of atoms and covalent bonds between them. A direct inference of its activity from the molecule's structure would be ideal, but not feasible. One could try a molecular dynamics (MD) simulation, however such computational methods have their limits. An MD simulation would work at the molecular level, a heavy computational load if a whole ensemble of such molecules under desired environmental conditions. However, coarse-grained descriptors might directly influence the activity. If these coarse-grained molecular descriptors are easy to measure, one can hope to obtain a predictor for the molecule's activity from its structure.
+
+The desired descriptors should accentuate different chemical properties which may correlate directly with the desired activity. Physicochemical, quantum-chemical, geometrical, and topological features are some candidate properties. Such a statisical approach neglects the underlying bottom-up mechanistic description that serves the basis of MD simulations, in favor of searching for correlations among diverse descriptors of the molecule. The success of this methodology depends on the available experimental data that measures the activity of various molecules. One advantage of this method is that a universal set of descriptors can be applied to  any molecule, thus providing a unifying model for a wide class of molecules. 
+
+The choice of features/descriptors to use can be guided by a knowledge of the statistical models to be applied to the data. The statistical models are quite powerful, and have been developed to handle problems such as predictor-predictor correlations, or the problem too many predictors ( many more than the number of molecules ). Pruning of predictors can thus be done by these statistical models after the predictors have been measured for a large number of molecules. 
+
+A molecular descriptor maps the structure of the molecule into a set of numerical or binary values.
+
+== 2D QSAR Descriptors ==
+independent from its 3D orientation.
+*Constitutional Descriptors*
+	- molecular weight
+	- total number of atoms 
+	- number of atoms of different identity
+	- total number of single, double, triple, aromatic bonds
+	- number of aromatic rings
+*Electrostatic and Quantum-Chemical Descriptors*
+	- atomic net, and partial charges
+	- highest negative and positive charges
+	- molecular polarizability
+	- partial negatibely or positively charged solvent accessible surface area
+	- energies of highest occupied and lowest unoccupied molecular orbital
+	- absolute hardness
+*Topological Descriptors*
+	Structure as a graph, atoms as vertices and bonds as edges. 
+	- Wiener index: total length of the shortest paths between all pairs of non-hydrogen atoms.
+	- Randic indices: sum of geometric averages of edge degrees of atoms with paths of given lengths
+	- Balaban's H index 
+	- Shultz index
+	- Kier and Hall indices: geomertic averages of valence connectivities along paths.
+	- Galvex topological charge indices: topological valence of atoms and net charges transfer between pair of atoms separated by a given number of bonds.
+
+*Compounded Descriptors*
+	- BCUT descriptors: eigenvalues of atom connectivity matrix with atom charge, polarizability or H-bond potential values on diagonal and additional terms off diagonal.
+	- Topological Sub-Structural Molecular Design: spectral moments of bond adjacency matrix amended with infomration on bond polarizability etc.
+	- atom type electrotoplogical ( E-state) indices use electronic and topological organization to define the intrinsic atom state and the perturbations of this state induced by other atoms. 
+*Geometrical Descriptors*
+	- molecular surface obtained from atomic van der Waals areas and their overlap.
+	- principal moments of inertia and gravitational indices.
+	- shadow areas: projection of the moleculae to its two principal axes =
+	- total solvent-accessible surface area
+*Fragment-Based Descriptors and Molecular Fingerprints*
+	substructural motifs, BCI fingerprints: presence or absence of certain fragments. 166 MDL Keys. Elimination methods, Fast Random Elimination of Descriptors/Substructure Keys. Hologram QSAR: count the number of occurrences of certain substructural paths of functional groups. For each group, cyclic redundancy code is calculated, which serves as a hash table. The numbers of elements in the bins form a hologram. [[http://www.daylight.com/dayhtml/doc/theory/theory.finger.html| Daylight Fingerprints]]
+	
+== 3D QSAR Descriptors ==
+
