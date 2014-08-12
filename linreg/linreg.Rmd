@@ -9,4 +9,149 @@ the data. The book tries to do this, using some exploratory analysis in the firs
 just reading and running the code printed in the book doesn't help. Instead, I could write down the methods to be used, and rough hints about the R functions that the book mentions, and then try to do my own analysis. The exploratory part will give me some insights about the methods and the data as well, but for the moment I will skip it. Besides, it should sit in a different file. Here I will begin with linear regression. 
 
 ##Solubility Data
-Analysis of solubility data falls into the general research theme of quantitative structure activity relationship ( QSAR). I will write about QSAR in a wiki file.
+Analysis of solubility data falls into the general research theme of quantitative structure activity
+relationship ( QSAR). I will write about QSAR in a wiki file.
+
+The solubility data contains
+  - 280 binary fingerprints: whether a particular chemical substructure is present.
+  - 16 count descriptors: number of bonds, number of bromine atoms etc.
+  - 4 continuous descriptors: molecular weight, surface area etc.
+
+*Issues* Correlation between predictors, some expected by their definition. Count descriptors are right-skewed. 
+*Pre-processing* Not much possible for binary predictors. Box-Cox for the skewed count descriptors. PCA for correlated predictors. The structure of the data is contained in a much smaller number of dimensions. 
+
+## Issues with linear regression: too many predictors
+- remove pairwise correlated predictors. may not completely remove collinearity: a predictor may be a function of more than one other predictors.
+- *variance inflation factor* (Myers 1994): the square root of the VIF tells how much larger the standard errir is, compared with what it would be if the variable were uncorrelated with the other predictors in the model. obtained by linear-regressing a variable on the rest. 
+- PCA, simulataneous dimension reduction, regression via PLS or shrinkage methods: ridge, lasso, elastic net.
+- outliers/influential data. Robust linear regression: use an alternative metric to SSE that is less sensitive to outliers: the sum of absolute errors, Huber function.  
+
+###Solubility data.
+Remove predictors such that no absolute pairwise correlation is greater than some pre-specified level (0.9 used for solubility data) 38 predictors removed. 
+lm $R^2$ = 0.88 for training data and 0.87 for test data. Using diagnostic plots, no apparant bias in the prediction.
+```{r} solubilityLinReg}
+
+```
+
+## Partial Least Squares
+PCA chases the variability in the predictor data, and dimensionality reduction using PCA will be useful only if the predictor variability is related to variability in the response. 
+
+Originated in the nonlinear iterative partial least squares (NIPALS) algorithm of Herman Wold ( 1966, 1982) seeks to find underlying, or latent, relationships amount the predictors which are highly correlated with the response.
+**NIPALS**
+  - assess the relationship between the predictors and response
+  - summarize the relationship with a vector of weights: the direction
+  - orthogonally project the predictor data onto the direction to generate scores. 
+  - use scores to generate loadings which measure the correlation of the score to the original predictors.
+  - deflate the predictors and the response by subtracting the current estimate of the predictor and response structure.
+  
+PLS finds linear combination of the predictors: components or latent variables that maximally summarize the variation of the predictors while simultaneously requiring these components to have maximum correlation with the response.
+
+###Solubility Data
+
+```{r solubilityPLS}
+
+```
+
+PCR and PLS give similar results, but PLS uses fewer predictors.
+
+**Variable importance in the projection** when using the NIPALS algorithm (Wold et al 1993). This is what you would expect it to  be. Normalized weight matrix of the components is used. A component contributes the amount of response variation it explains.
+```{r solubilityPLS_variableImportance}
+
+```
+
+There are several newer algorithms that do PLS. 
+
+## Penalized Models
+Underlying linear regression using sum squared errors is the assumption of normality to the data.
+We can make a physical analogy in the space of the parameters. The quadratic form of the error 
+associated with the parameters provides the energy of the system. If we change a parameter, the
+parameter is pulled back towards its optimal value towards the energy minimum. Penalty through 
+ridge-regression dampens the effect of the energy's pull, and thus reducing the size of the parameters.
+Ridge-regression  attaches springs of equal strength to the parameters, pulling them to a value 
+of zero. This shifts the overall minimum towards zero. Lasso on the other hand is special kind 
+of spring that pulls the parameters back to zero with a constant force towards zero. This force 
+is always towards zero, negative when a parameter is positive, and positive when the parameter is
+below zero. The effect of this force is a shift in a parameter's value by an amount that is
+proportional to the lasso's *force*. Any parameter whose strength (given by ordinary linear regression)
+is smaller than the force is set to zero, as that is the zero of the total force. If lasso is the 
+only penalty, weak parameters will be set providing feature selection. Stronger parameters will be
+merely shifted by an amount that is proportional to the lasso force and inversely proportional to 
+the parameter's strength. Additional ridge-regression penalty will also provide the damping effect.
+
+The coefficients produced by OLS refression are unbiased, and of all the unbiased linear techniques
+they also have the lowest variance. But models can be biased, which may have a lower variance than the 
+unbiased linear OLS regression model. Collinearity can introduce large variance, which may be combatted
+by a biased model. 
+
+*I am not clear about how collinearity can introduce variance. I should try to learn the bias-variance tradeoff clearly*.
+
+We can think of the predictors as voting when making a prediction. Two collinear predictors would 
+vote similarly. The prediction will doubly diverge from the mean prediction (over all possible data sets) 
+thus increasing the model variance. 
+
+Penatly makes a trade-off between the model variance and bias: We are assuming something about the
+model, that its parameters are zero in the absence of any data, a *prior*. This bias in our belief
+will reduce the model variance and may reduce the overall MSE. 
+
+### Solubility Data
+Let us try to understand our spring analogy quantitatively using the solubility data. 
+Different parameters will behave differently to the penalty. The penalty has the same coefficient for 
+each parameter. Parameter estimates of the OLS linear regression provide the equilibrium value, 
+and the confidence bounds/standard-errors provide the strength of the potential/force corresponding 
+to that parameter. Parameter estimates will be damped when we add the ridge-regression penalty. What
+determines the extent to which a paramter will be damped? The figures in the book provide the 
+dependence of the parameter values on the penalty coefficient. It is not clear if the y-axis is the 
+parameter or a standardized value ( Fig 6.15 says its the *standardized coefficient*). How does
+this figure look when we add errors ( the standard-errors) of the parameters? 
+```{r ridgeRegressionCoefficientPath}
+#reproduce Fig 6.15 from text with standard-errors for the coefficients.
+```
+What should we expect using our spring analogy?  
+*The amount of shrinkage of a parameter will be directly proportional to its standard-error.*
+So parameter shrinkage is a sophisticated way of shrinking statistically insignificant parameters.
+Particularly useful for collinear/correlated parameters, it should distribute the load equally over 
+the correlated parameters. In the model variance term parameters for correlated variables will 
+appear as a product. The sum of the parameters will be constrained to a *common* value. The product 
+itself will be minimized when the parameters are equal. This is implemented by ridge-regression. 
+The parameters inside the ridge-regression penalty will appear as a sum of their squares. OLS will 
+predict the parameters upto their sum, thus any values of the parameter upto their mean will be good.
+The two squared terms from the penalty will cause the overall MSE to depend on the difference between
+the parameters as well. The coefficient of this difference squared term will depend on the correlation
+between the two terms in the original OLS, as that is where the product of the terms comes from. If
+the parameters were uncorrelated, there will be no product term, and hence no difference squared term.
+The two terms will thus be optimized separately.
+
+In terms of the springs, we have to rotate the reference frame for the forces to axes along the sum of
+the two parameter's forces and their difference. The penalty term creates a negatively directed force
+along both these axes, while the OLS term causes a positive force only along the sum-direction. Thus
+an optimal value can be found only when the difference between the two parameters is zero.
+
+### Lasso
+
+*Lasso is somewhat indifferent to very correlated predictors, and will tend to pick one and ignore the rest.* 
+
+Consider when two correlated parameters have a combined strength larger than the lasso's coefficient.
+The effect of the lasso will be shift the optimal value from that of the OLS to a smaller value, but
+not a shrinkage. If the combined strength is smaller than the lasso coefficient, both the parameters
+should move to zero. However, the correlation between the predictors may not be complete. If one
+parameter is weaker than the lasso, that parameter will be set to zero, and the other to a non-zero
+but shifted value. That which parameter goes to zero then depends on that parameter's standard-error in 
+the OLS. Can we test this insight into the workings of the lasso? We can proceed by reproducing Fig.6.17
+from the text with the standard errors for the coefficients.
+```{r lassoCoefficientPath}
+#reproduce Fig 6.17 with standard-errors for the coefficients.
+```
+
+Lasso combined with ridge-regression gives the elastic net that enables effective regularization via 
+the ridge-penatly with the feature selection quality of the lasso penalty. Hastie and Zou suggest that
+this model will deal with correlated predictors more effectively. **But why ? **
+
+The text does not provide a figure analogous to Figs 6.15 and 6.17. For different values of the 
+ridge coefficient, we can make figures analogous to Fig 6.17 or the other way around, along with 
+the standard errors for the coefficients.
+```{r elasticCoefficientPaths}
+#reproduce figures analagous to Fig 6.17 or Fig 6.15 for different values of the coefficients, 
+#with stand errors for the coefficients
+```
+
+
