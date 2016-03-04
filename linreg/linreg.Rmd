@@ -144,7 +144,7 @@ from the text with the standard errors for the coefficients.
 
 Lasso combined with ridge-regression gives the elastic net that enables effective regularization via 
 the ridge-penatly with the feature selection quality of the lasso penalty. Hastie and Zou suggest that
-this model will deal with correlated predictors more effectively. **But why ? **
+this model will deal with correlated predictors more effectively. **But why ?**
 
 The text does not provide a figure analogous to Figs 6.15 and 6.17. For different values of the 
 ridge coefficient, we can make figures analogous to Fig 6.17 or the other way around, along with 
