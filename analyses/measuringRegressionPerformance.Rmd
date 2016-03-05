@@ -1,0 +1,46 @@
+---
+title: "Measuring Performance in Regression Models"
+output:
+  pdf_document:
+    fig_caption: yes
+    keep_tex: yes
+  html_document:
+    highlight: tango
+    number_sections: yes
+    theme: journal
+author: "Vishal Sood"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache=FALSE)
+knitr::opts_chunk$set(echo=FALSE)
+knitr::opts_chunk$set(include=TRUE)
+knitr::opts_chunk$set(results="asis")
+knitr::opts_chunk$set(fig.width=12)
+knitr::opts_chunk$set(fig.height=14)
+prjpath <- "~/work/learn/machineLearn/appliedPredictiveModeling/"
+datapath <- paste(prjpath, "data/", sep="")
+analpath <- paste(prjpath, "analyses/", sep="")
+rcodepath <- paste(analpath, "Rcode/", sep="")
+setwd(analpath)
+
+```{r loadLibsAndSource, include=FALSE}
+reqdpkgs <- c("lattice", "latticeExtra", "ggplot2", "reshape2",
+						 	"plyr", "Hmisc", "corrplot", "AppliedPredictiveModeling",
+							"caret", "rms", "e1071", "ipred", "MASS")
+lapply(reqdpkgs, library, character.only=TRUE)
+```
+
+#Quantitative Measures of Performance
+RMSE.
+
+$R^2$: proportion of the information in the data that is explained by the model. It is a measure of correlation, not accuracy. Depends on the variation of the outcome.
+
+Spearmans' rank correlation
+
+#The Variance-Bias Trade-off
+Bias: reflects how close the functional form of the model can get to the true relationship between the predictors and the outcome.  Low bias means that the model can get very close to the data.
+
+Low variance would be when the variance would not substantially change if another set of data points were generated the same way.
+
+Highly correlated predictors can lead to collinearity issues, which can greatly increase the model variance.

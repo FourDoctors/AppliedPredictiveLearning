@@ -1,0 +1,277 @@
+---
+title: "Over Fitting and Model Tuning"
+output:
+  pdf_document:
+    fig_caption: yes
+    keep_tex: yes
+  html_document:
+    highlight: tango
+    number_sections: yes
+    theme: journal
+author: "Vishal Sood"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache=FALSE)
+knitr::opts_chunk$set(echo=FALSE)
+knitr::opts_chunk$set(include=TRUE)
+knitr::opts_chunk$set(results="asis")
+knitr::opts_chunk$set(fig.width=12)
+knitr::opts_chunk$set(fig.height=14)
+prjpath <- "~/work/learn/machineLearn/appliedPredictiveModeling/"
+datapath <- paste(prjpath, "data/", sep="")
+analpath <- paste(prjpath, "analyses/", sep="")
+rcodepath <- paste(analpath, "Rcode/", sep="")
+setwd(analpath)
+
+```{r loadLibsAndSource, include=FALSE}
+reqdpkgs <- c("lattice", "latticeExtra", "ggplot2", "reshape2",
+						 	"plyr", "Hmisc", "corrplot", "AppliedPredictiveModeling",
+							"caret", "rms", "e1071", "ipred", "MASS")
+lapply(reqdpkgs, library, character.only=TRUE)
+```
+
+#Introduction
+
+#The Problem of Over-Fitting
+Complex models will fit the noise as well, this amounts to over-fitting. 
+
+##Model Tuning
+Parameters in the model can be tuned. Consider $K$-nearest neighbor, the parameter $K$ has to be tuned to yield the optimal model -- no analytical formula to give the optimal $K$ -- so it is a tuning parameter. Tuning parameters control the complexity of the model.
+
+A simple way to determine the tuning parameter is to iterate over a fixed set of values, for example odd integers 1 to 9 for $K$, resampling the training data several times and aggregating the results to yield the $K$ that minimizes the error. **Genetic algorithms (Mitchell 1998) and simplex search methods (Olsson and Nelson 1975)** algorithmically determine the appropriate tuning parameter values. Cohen (2005) provides a comparison for SVMs.
+
+Test set to evaluate performance. Or resample the training set: use several modified versions of the training set to build multiple models and then use statistical methods to provide honest estimates of model performance. 
+
+##Data Splitting
+
+Model building
+
+. Pre-process the predictor data
+. Estimate model parameters
+. Select predictors for the model
+. Evaluate model performance
+. Fine tune class prediction rules (via ROC curves, etc)
+
+If the data is small, use resampling methods such as cross-validation. A test set will reduce the amount of data for training, and may be unneccessary.
+
+Test set should be chosen non-randomly in some (real) cases. Otherwise random sampling can be used. To account for the outcome, stratified random sampling within subgroups of the outcome.  Or on the basis of the predictor values, maximum dissimilarity sampling.
+
+Martin et al (2012) compare different methods of splitting data.
+
+```{r exampleDataSplittingData}
+data(twoClassData)
+str(predictors)
+str(classes)
+```
+
+Random splits can be created using base R function *sample*. Stratified random splits using *caret::createDataPartition*. 
+
+```{r createdatapartition}
+set.seed(1)
+trainingRows <- createDataPartition(classes, p = .80, list=FALSE)
+print (paste( "createDataPartition with list=FALSE produces a ", class(trainingRows)))
+head(trainingRows)
+```
+So now we have indices of the rows that should go into the training set,
+```{r makeTrainingSet}
+trainPredictors <- predictors[trainingRows,]
+trainClasses <-  classes[trainingRows]
+testPredictors <- predictors[-trainingRows,]
+testClasses <- classes[-trainingRows]
+str(trainPredictors)
+str(testPredictors)
+```
+
+To generate a test set using maximum dissimilarity sampling, use *caret::maxdissim* to sequentially sample the data.
+
+
+##Resampling methods
+
+**$k$-fold cross-validation** $k$ random partitions, or balanced with respoect to the outcome. LOOCV: leave-one-out cross validation. Repeated k-fold CV. $k$ = 5 or 10, but no formal rule. Larger $k$, smaller difference in size between the training set and the resampling subsets, the *bias* gets smaller **HOW?**. (Bias is the difference between the estimated and true values of performance).
+
+*Uncertainty* Unbiased method -- true theoertical performance, would have a high uncertainty . . . repeated resampling may produce a very different value. *So the model gets biased to the training set.* k-fold generally has high variance compared to other methods. 
+
+Large $k$ more computation. LOOCV similar to k=10 (Molinaro 2005). So computationally k=10 is more attractive. Small $k$ of 2, 3 have high bias, but very efficient. Compares to boostrap.
+
+Repeating $k$-fold increases the precision of the estimates, while still maintaining a small bias (Molinaro 2005; Kim 2009)
+
+*Repeated Training/Test Splits* or leave-group-out cross-validation, Monte-Carlo cross validation. The bias of the resampling technique decreases as the amount of data in the subset approached the amount in the modeling set. **I do not understand what they mean by the subset**
+
+The larger the fraction of samples allocated to the prediction set, higher the uncertainty -- so repeat. Larger uncertainty for larger prediction set makes sense. The validation set is smaller, so uncertainty would be high. So the bias should be smaller! Then what about larger $k$ in cross validation? In each validation cycle, the prediction set is large for larger $k$. So the resulting model should have a larger uncertainty, hence the bias is smaller. **So the uncertainty depends on the prediction set**, the unknown data, while bias depends on the data-set used for training.
+
+
+**Bootstrap**, error rates have less uncertainty than $k$-fold cross-validation. Bias is similar to $k$ = 2, problematic if training set is small. Modifications have been studied, the 632-method (Efron 1983) combines the simple bootstrap with the estimate from re-predicting the training set ( the apparent error rate). Can result in unduly optimistic results -- then there is the 632+ method, (Efron and Tibshirani 1997). 
+
+### Computing
+
+*caret* has various functions. 
+
+For repeated training/test splits *caret::createDataPartition* with additional argument *times*.
+```{r repeatedSampling}
+set.seed(1)
+repeatedSplits <- createDataPartition(trainClasses, p = 0.8, times=3)
+str(repeatedSplits)
+```
+
+*caret::createResamples* : boostrapping
+*caret::createFolds* : $k$-fold cross-validation
+*caret::createMultiFolds*: for repeated cross-validation
+
+```{r crossval}
+set.seed(1)
+cvSplits <- createFolds(trainClasses, k=10, returnTrain=TRUE)
+str(cvSplits)
+fold1 <- cvSplits[[1]]
+cvPredictors1 <- trainPredictors[fold1,]
+cvClasses1 <- trainClasses[fold1]
+print(paste("fraction of samples in cvPredictors1", nrow(cvPredictors1)/nrow(trainPredictors)))
+
+```
+
+#Case Study -- Credit Scoring
+The German credit data: 1000 samples labeled good/bad credit. In all, 41 predictors. 800 random samples for training.
+
+
+
+#Choosing between models
+
+Use t-tests to compare different models, which one is better?
+
+Sensitivity, specifity. If the data set includes more events than nonevents, the sensititivty can be estimated with greater precision than specificity. With increased precision, there is a higher likelihood that models can be differentiated in terms of sensitivity than for specificity. 
+
+
+#Basic Model Building in R
+We will use *caret::knn3* as an example to train
+```{r buildKNN3}
+trainPredictors <- as.matrix(trainPredictors)
+fit.knn <- knn3(x=trainPredictors, y=trainClasses, k=5)
+fit.knn
+```
+
+And prediction
+```{r knn3pred}
+testPredictors <- predict(fit.knn, newdata=testPredictors, type="class")
+head(testPredictors)
+str(testPredictors)
+```
+
+
+##Determination of Tuning Parameters
+A profile to understand the relationship between performance and parameter values. 
+
+*e1071::tune*: evaluates four types of models across a range of parameters
+*ipred::errorest*: resample single models
+*caret::train*: built-in modules for 144 models and includes capabilities for different resampling methods, performance measures, and algorithms for choosing the best model from the profile.
+
+Example, tune an SVM for German credit
+
+```{r svmtunedata}
+data(GermanCredit)
+```
+Some of the predictors may not have a good distribution, for example if the predictor is a 0/1 variable, most of its values in the data may be 1. We can remove these variables by identifying using a *caret::nearZeroVar*. 
+```{r removeZeroVar}
+GermanCredit <- GermanCredit[, -nearZeroVar(GermanCredit)]
+```
+
+Predictors may duplicate values, those should be removed. That they duplicate values can be investigated using EDA. Here we believe the authors and repeat, and **check** their claims later
+
+```{r removeDuplicates}
+GermanCredit$CheckingAccountStatus.lt.0 <- NULL
+GermanCredit$SavingsAccountBonds.lt.100 <- NULL
+GermanCredit$EmploymentDuration.lt.1 <- NULL
+GermanCredit$EmploymentDuration.Unemployed <- NULL
+GermanCredit$Personal.Male.Married.Widowed <- NULL
+GermanCredit$Property.Unknown <- NULL
+GermanCredit$Housing.ForFree <- NULL
+```
+Probably, their thinking is that these variables will be turned into dummy variables, and including all possible values of a variable will lead to linear dependencies.
+
+```{r trainsplit}
+set.seed(100)
+inTrain <- createDataPartition(GermanCredit$Class, p=0.8)[[1]]
+GermanCreditTrain <- GermanCredit[inTrain,]
+GermanCreditTest <- GermanCredit[-inTrain,]
+```
+
+Fit SVM
+
+```{r svmgerman}
+set.seed(1056)
+fit.svm.first <- train(Class ~ .,
+											 data=GermanCreditTrain,
+								       method="svmRadial" # the model type
+								      )
+```
+
+We can pre-process data inside *caret::train* by passing in the *preProc* argument,
+```{r svmgermanwithpreproc}
+set.seed(1056)
+fit.svm.second <- train(Class ~ .,
+                        data=GermanCreditTrain,
+                        method="svmRadial",
+                        preProc=c("center", "scale"),
+                        tuneLength=10)
+```
+The parameter *tuneLength* with value 10 will test cost values $2^{-2}$ through $2^7$. The default behavior is to use basic bootstrap to calculate the performance measure. Cross-validation can be specified,
+```{r svmgermanwithCV}
+set.seed(1056)
+fit.svm.third <- train(Class ~ .,
+                       data=GermanCreditTrain,
+                       method="svmRadial",
+                       preProc=c("center", "scale"),
+                       tuneLength=10,
+                       trControl=trainControl(method="repeatedcv", repeats=5))
+```
+
+This will use $10$-fold cross-validation.
+
+To view the results, plot
+```{r svmplot}
+plot(fit.svm.third, scales=list(x=list(log=2)))
+```
+to predict
+```{r svmpred}
+predictedClasses <- predict(fit.svm.third, GermanCreditTest)
+str(predictedClasses)
+```
+We can also obtain the predicted probabilities
+```{r svmpredprob}
+predictedProbs <- predict(fit.svm.third, 
+                          newdata=GermanCreditTest,
+                          type="class")
+head(predictedProbs)
+```
+
+##Between-Model Comparisons
+We train a logistic model and compare it to the SVM. There are no tuning parameters, but we can still use cross-validation to compute model performance,
+```{r logisticgerman}
+set.seed(1056)
+fit.glm <- train(Class ~ .,
+                 data=GermanCreditTrain,
+                 method="glm",
+                 trControl=trainControl(method="repeatedcv",
+                                        repeats=5))
+fit.glm
+```
+
+To compare glm and SVM based on their cross-validation statistics, the *resamples* function can be used with models that share a common set of resampled data sets. 
+```{r svmglmcompare}
+resamp <- resamples(list(SVM=fit.svm.third, Logistic=fit.glm))
+summary(resamp)
+```
+To assess possible differences between the models,
+```{r svmglmdiff}
+modeldiffs <- diff(resamp)
+summary(modeldiffs)
+```
+
+
+
+
+
+
+
+
+
+hjlajkndsinufiufinugfinu

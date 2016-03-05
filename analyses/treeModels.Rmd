@@ -1,0 +1,274 @@
+---
+title: "Regression Trees and Rule Based Models"
+author: "Vishal Sood"
+output:
+  html_document:
+    highlight: tango
+    number_sections: yes
+    theme: journal
+  pdf_document:
+    date: '`r format(Sys.time())`'
+    fig_caption: yes
+    keep_tex: yes
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache=FALSE)
+knitr::opts_chunk$set(echo=FALSE)
+knitr::opts_chunk$set(include=TRUE)
+knitr::opts_chunk$set(results="asis")
+knitr::opts_chunk$set(fig.width=12)
+knitr::opts_chunk$set(fig.height=14)
+prjpath <- "~/Dropbox/work/learn/machineLearn/appliedPredictiveModeling/"
+datapath <- paste(prjpath, "data/", sep="")
+analpath <- paste(prjpath, "analyses/", sep="")
+rcodepath <- paste(analpath, "Rcode/", sep="")
+setwd(analpath)
+
+```{r loadLibsAndSource, include=FALSE}
+reqdpkgs <- c("lattice", "latticeExtra", "ggplot2", "reshape2",
+						 	"plyr", "Hmisc", "corrplot", "AppliedPredictiveModeling",
+              "caret", "Cubist", "doMC", "gbm", "party", "partykit",
+              "randomForest", "rpart", "rpart.plot", "RWeka")
+lapply(reqdpkgs, library, character.only=TRUE)
+```
+
+#Example Data
+We will use the solubility data for illustrations. For cross-validation we need to set the folds, and a control to tell *caret::train* how to train the model. For creating data partitions caret provides functions,
+
+1. *createDataPartition*: a series of test/training partitions
+2. *createResample*: one or more bootstrap samples
+3. *createFolds*: splits the data into k groups 
+4. *createTimeSlices*: creates cross-validation sample information to be used with time series data
+
+To create the CV folds we will use *createFolds*, that creates 10 folds by default, returning the data as a list of vectors containing the sample positions corresponding to the data used during training. Remember that having 10 folds means that 1 of the ten folds will be held out from training for validation. The returned vectors will then contain 90% of the samples. This list will then be passed to *trainControl* to obtain a *control* object to be used with *caret::train*.
+```{r loadsolAndSetCV}
+data(solubility)
+set.seed(100)
+indx <- createFolds(solTrainY, returnTrain=TRUE)
+ctrl <- trainControl(method="cv", index=indx)
+```
+
+#Basic Regression Trees
+
+Packages for regression trees:
+
+1. **rpart** splits using CART methodology, the *rpart* function,
+   two commonly used control parameters that are used in training are the complexity parameter (cp) and maximum node depth (maxdepth), both accessible in *caret::train*. For *cp* set *method="rpart"*, for maxdepth, *method="rpart2"*.
+2. **party** splits using conditional inference framework, the *ctree* function.
+
+
+
+
+
+We make two CART models,
+```{r twocart}
+trainData <- data.frame(solTrainXtrans, solubility=solTrainY)
+rpStump <- rpart(solubility ~ ., data=trainData,
+                 control=rpart.control(maxdepth=1))
+rpSmall <- rpart(solubility ~ ., data=trainData, 
+                 control=rpart.control(maxdepth=2))
+```
+
+Tune the model
+```{r cartune}
+cartTune <- train(x = solTrainXtrans, y = solTrainY,
+                  method="rpart",
+                  tuneLength=25,
+                  trControl=ctrl)
+cartTune
+```
+And plot the tuning
+```{r plotcartune}
+plot(cartTune, scales=list(x=list(log=10)))
+```
+Variable importance
+
+```{r treevarimp}
+cartImp <- varImp(cartTune, scale=FALSE, competes=FALSE)
+cartImp
+```
+Test the model on the test-data
+```{r testcart}
+testResults <- data.frame(obs=solTestY,
+                          CART=predict(cartTune, solTestXtrans))
+```
+
+Conditional inference tree
+
+```{r tunecondinftr}
+cGrid <- data.frame(mincriterion=sort(c(0.95, seq(0.75, 0.99, length=10))))
+set.seed(100)
+ctreeTune <- train(x=solTrainXtrans, y=solTrainY,
+                   method="ctree",
+                   tuneGrid=cGrid,
+                   trControl=ctrl)
+ctreeTune
+plot(ctreeTune)
+```
+
+
+
+#Regression Model Trees
+
+
+Linear regression in the nodes, instead of average outcome. 
+
+Main implementation in the Weka software suite, accessed using RWeka. 
+
+**M5P** fits the model tree, **M5Rules** uses the rule based version. 
+
+One control parameter is the minimum number of training set points required to create additional splits, $M=10$ in the example below. Other control arguments may be toggling the use of smoothing and pruning. 
+
+To tune with *caret::train*, using *method="M5"* evaluates model trees and rule-based versions, as well as the use of smoothing and pruning. The tuning then is over the 4 combinations of whether to smooth and prune.  *method="M5Rules"* evaluates only the rule-based version.
+
+```{r modeltree}
+m5Tune <- train(x=solTrainXtrans, y=solTrainY,
+                method="M5",
+                trControl=ctrl,
+                control=Weka_control(M=10))
+m5Tune
+plot(m5Tune)
+```
+Final model is available,
+```{r modeltreefinaltuned}
+m5Tune$finalModel
+plot(m5Tune$finalModel)
+```
+
+Tuning is therefore over weather rule-based or tree-based, pruned, and smoothed. We can check what is going on by making these models. For functions provided by *RWeka*, the control parameters can be queried using *WOW*,
+```{r wekawow}
+print("control parameters for M5P")
+WOW(M5P)
+print("control parameters for M5Rules")
+WOW(M5Rules)
+```
+We see the whats needed for pruned, smoothed, etc
+```{r severalmodeltrees}
+set.seed(100)
+m5Fit.p.s <- M5P(solubility ~ ., data=trainData,
+                 control=Weka_control(M=10, N=FALSE, U=FALSE))
+m5Fit.up.s <- M5P(solubility ~ ., data=trainData,
+                 control=Weka_control(M=10, N=TRUE, U=FALSE))
+m5Fit.p.us <- M5P(solubility ~ ., data=trainData,
+                 control=Weka_control(M=10, N=FALSE, U=TRUE))
+m5Fit.up.us <- M5P(solubility ~ ., data=trainData,
+                 control=Weka_control(M=10, N=TRUE, U=TRUE))
+```
+
+**Exercise**: Use the folds for cross-validation passed to *caret::train* to manually cross-validate the model trees.
+
+
+
+#Rule-Based Models
+
+#Bagged Trees
+Bootstrapped Aggregating
+
+Package *ipred*, two functions *bagging* uses formula interface, *ipredbagg* uses non-formula. They use the *rpart* function for the trees, and control parameters can be passed using rpart.control. By default the largest possible tree is created. 
+
+Also exists *caret::bag* for bagging many model types. Conditional inference trees using *party::cforest* if the argument *mtry* is equal to the number of predictors.
+
+
+#Random Forests
+**Tree Correlation** (Hastie et al 2008): If we start with a sufficiently large number of original samples and a relationship between predictors and response that can be adequately modeled by a tree, then trees from different bootstrap samples may have similar structures to each other ( especially at the top of the trees) due to the underlying relationship. This can prevent bagging from optimally reducing variance of the predicted values. 
+
+So variance can be further reduced, Breiman's Random Forest:
+
+1. m <- NumberOfModelsToBuild
+2. for i = 1 to m do
+3.    Generate a bootstrap sample of the original data
+4.    Train a tree model on this sample
+5.    for each split do
+6.      Randomly select k (< P) of the original predictors
+7.      Select the best predictor among the k predictors and partition the data
+8.    end
+9.    Use typical tree model stopping critera to determine when a tree is complete (no pruning)
+10. end
+
+Tuning parameter: number of models to build.
+
+Breiman: linear combination of many independent learners reduces the variance of the overall ensemble relative to any individual learners. Random forest achieves this by selecting strong, complex learners that exhibit low bias. Robust to noisy response, however the independence of learners can underfit data when the response is not noisy.
+
+CART or conditional inference trees can be used as the base learner. Tuning parameter does not have a drastic effect on performance. Cross-validation RMSE can be very similar to out-of-bag error estimate. 
+
+Can we understand the relationship between the predictors and the response?
+
+Breiman: Randomly permute the values of each predictor for the oob sample of one predictor at a time for each tree. The difference in predictive performance between the non-permuted sample and the permuted sample for each predictor is recorded and aggregated across the entire forest. 
+
+Or measure the improvement in node purity based on the performance metric for each predictor at each occurence of that predictor across the forest, aggregate across the forest to determine the overall importance for the predictor. 
+
+Problems with collinearty in determining predictor importances. Dillution effects.
+
+Both formula, and non-formula interfaces in *randomForest*
+The two main argument are *mtry* for the number of predictors that are randomly sampled as candidates for each split, and *ntree* for the number of bootstrap samples. *importance=TRUE* if variable importance scores are needed.
+```{r simpleranfor}
+rfModel <- randomForest(solTrainXtrans, solTrainY,
+                        importance=TRUE,
+                        ntrees=1000)
+```
+
+Forests using conditional inference trees, use *party::cforest*. The control parameters are passed with *controls*, and allows to pick the type of splitting algo (biased or unbiased).
+
+With *caret::train*, *method="rf"*, or *method="cforest"*, can use standard resampling methods (as opposed to out-of-bag estimate).
+
+Variable importance ... *randomForest* use function *importance*;  *cforest* usefunction *varimp*. 
+
+In *caret*, a unifying function called *varImp*: a wrapper for variable importance functions for tree-model objects: rpart, classbag, randomForest, cforest, gbm, and cubist.
+
+#Boosting
+Originally for classification. From AdaBoost for classification to Friedman's stochastic gradient boosting machine. From AdaBoost for classification to Friedman's stochastic gradient boosting machine. From AdaBoost for classification to Friedman's stochastic gradient boosting machine.
+
+1990s, Schapire 1990, 1999; Freund 1995, influence by learning theory. Weak classifiers are combined (boosted) to produce an ensemble classifier with a superior generalized misclassification error rate.  AdaBoost is implementation (Schapire 1999)
+
+Used widely with applications in gene expression (Dudoit 2002, Ben-Dor 2000), chemometrics (Varmuze 2003), music genre identification (Bergstra 2006).
+
+
+(Friedman 2000): AdaBoost to statistical concepts of loss functions, additive modeling, and logistic regression. Boosting can be interpreted as a forward stagewise additive model that minimizes exponential loss. Resulted in a simple, elegant, and highly adaptable algorithm for different kinds of problems (Friedman 2001): gradient boosting machines. Both regression, classification. 
+
+**Gradient Boosting Machines**: given a loss function, and a weak learner, finds an additive model that minimized the loss function. Initialize with the best guess of the response. Calculate the gradient (eg residual), fit a model to the residuals to minimize the loss. Add the current model to the previous model. Iterate.
+
+With trees as base learners, two tuning parameters: tree depth (interaction depth), number of iterations. Tree depth is also called interaction depth: think of each subsequential split as a higher-level interaction term with all of the other previous split predictors. 
+
+With squared error as the loss function,
+. let D = treeDepth
+. let K = numIterations
+. let L = learningRate
+. iteration(observed, currentPred) = 
+    currentPred + L*updatePred(observed, currentPred)
+. updatePred(residuals currentPred) = predict(T)
+    where T = regressionTree(depth=D, 
+                             response=residuals(observed, currentPred))
+
+
+Difference from random forests: dependent on past trees, have minimum depth, and contribute unequally to the final model. 
+
+Can be susceptible to over-fitting. Learner optimally fits the gradient, so Boosting will select the optimal learner at each stage of the algorithm. The greedy strategy may not find the optimal global model, and may over-fit the training data. So regularization through $\lambda$, the learning rate. (Ridgeway 2007)
+
+Friedman's **stochastic gradient boosting**: update using a randomly sampled fraction of the training data ( around 0.5), the fraction becomes another tuning parameter.
+
+Variable importance: function of the reduction in squared error -- due to each predictor is summed within each tree in the ensemble. Averaged
+
+Package *gbm*. 
+
+```{r gbmeg}
+gbmModel <- gbm.fit(solTrainXtrans, solTrainY, distribution="gaussian")
+gbmModel.2 <- gbm.fit(solubility ~ ., data=trainData, distribution="gaussian")
+```
+*distribution* defines the type of loss function to be optimized during boosting -- "gaussian" for continuous response. Other control parameters that can be set: n.trees, interaction.depth, shrinkage, and bag.fraction.
+
+*caret::train* can be used to tune over these parameters. First a tuning grid,
+```{r traingbmgrid}
+gbmGrid <- expand.grid(.interaction.depth=seq(1,7,by=2),
+                       .n.trees = seq(100, 1000, by=50),
+                       .shrinkage=c(0.01, 0.1))
+set.seed(100)
+gbmTune <- train(solTrainXtrans, solTrainY,
+                 method="gbm",
+                 tuneGrid=gbmGrid,
+                 verbose=TRUE)
+```
+
+ 
+
+
+

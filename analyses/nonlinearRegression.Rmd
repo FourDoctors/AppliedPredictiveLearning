@@ -1,0 +1,38 @@
+---
+title: "Nonlinear Regression Models"
+output:
+  pdf_document:
+    fig_caption: yes
+    keep_tex: yes
+  html_document:
+    highlight: tango
+    number_sections: yes
+    theme: journal
+author: "Vishal Sood"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache=FALSE)
+knitr::opts_chunk$set(echo=FALSE)
+knitr::opts_chunk$set(include=TRUE)
+knitr::opts_chunk$set(results="asis")
+knitr::opts_chunk$set(fig.width=12)
+knitr::opts_chunk$set(fig.height=14)
+prjpath <- "~/work/learn/machineLearn/appliedPredictiveModeling/"
+datapath <- paste(prjpath, "data/", sep="")
+analpath <- paste(prjpath, "analyses/", sep="")
+rcodepath <- paste(analpath, "Rcode/", sep="")
+setwd(analpath)
+
+```{r loadLibsAndSource, include=FALSE}
+reqdpkgs <- c("lattice", "latticeExtra", "ggplot2", "reshape2",
+						 	"plyr", "Hmisc", "corrplot", "AppliedPredictiveModeling",
+							"caret", "rms", "e1071", "ipred", "MASS", "lars", "pls", "stats")
+lapply(reqdpkgs, library, character.only=TRUE)
+```
+
+
+#Introduction
+Neural networks, mutivariate adaptive regression splines (MARS), support vector machines (SVMs), and $K$-nearest neighbors (KNNs). Next chapter tree-based models.
+
+#Neural Networks

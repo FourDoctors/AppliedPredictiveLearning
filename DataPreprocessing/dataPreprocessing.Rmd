@@ -1,0 +1,191 @@
+---
+title: "Data Preprocessing"
+output: html_document
+---
+
+We will first follow the steps outlined in the book to understand the preprocessing 
+ideas, and then apply these to data-sets of our choice. The book uses the cell segmentation
+data,
+
+```{r loadData}
+library(AppliedPredictiveModeling)
+data(segmentationOriginal)
+segData <- subset(segmentationOriginal, Case == "Train")
+cellID <- segData$Cell
+class <- segData$Class # partially, or well segmented ?
+case <- segData$Case #train/test
+segData <- segData[, setdiff(colnames(segData), c("Cell", "Class", "Case"))]
+statusColNum <- grep("Status", names(segData)) #binary versions of predictors
+segData <- segData[, -statusColNum]
+```
+##Transformations
+```{r skewness}
+library(e1071)
+skewValues <- sapply(segData, skewness)
+skewValues <- sort(skewValues, decreasing=TRUE)
+skewExtreme <- skewValues[ skewValues > 2 | skewValues < -2]
+sapply(names(skewExtreme), function(cn) {
+  plot(density(segData[, cn]), xlab=cn, 
+    main=paste("Density plot for variable", cn, " with skew ", signif(skewExtreme[cn],4))
+  )
+})
+```
+Visualize the skewness, scale before plotting.
+```{r skewVisuals}
+library(ggplot2)
+skew.melt <- do.call("rbind", 
+                     lapply( names(skewExtreme), function(cn){
+                       data.frame(value=scale(segData[, cn]), variable=cn, skew=as.character(skewExtreme[cn]))
+                     })
+                    )
+skew.gp <- ggplot(data=skew.melt, aes(value, color=skew)) + 
+            geom_freqpoly(aes(group=variable),  stat="bin", position="identity") + 
+            facet_wrap( ~ variable)
+skew.gp
+```
+These data are quite skewed, and we should transform them, using Box-Cox if the data are positive.
+```{r boxCox}
+skewExtreme.pos <- skewExtreme[ sapply(names(skewExtreme), function(cn) all(segData[, cn] > 0))]
+boxcoxTransformations <- lapply(names(skewExtreme.pos), function(cn) BoxCoxTrans(segData[, cn]))
+names(boxcoxTransformations) <- names(skewExtreme.pos)
+boxcoxTransformed <-  as.data.frame(do.call("cbind", 
+                                       lapply(names(skewExtreme.pos), function(cn){
+                                         predict(boxcoxTransformations[[cn]], segData[, cn])
+                      })))
+colnames(boxcoxTransformed) <- names(skewExtreme.pos)
+#visualize transformed variables
+unskew.melt <- do.call("rbind",
+                       lapply(names(skewExtreme.pos), function(cn){
+                         data.frame(value=scale(boxcoxTransformed[,cn]), variable=cn)
+                       }))
+unskew.gp <- ggplot(data=unskew.melt, aes(value)) +
+              geom_freqpoly( aes(group=variable), stat="bin", position="identity") + 
+              facet_wrap( ~ variable)
+unskew.gp
+```
+
+Some PCA now, 
+```{r pca}
+pcaObject <- prcomp(segData, center=TRUE, scale = TRUE)
+percentVariance <- pcaObject$sdev^2/sum(pcaObject$sdev^2)*100
+plot(percentVariance, type="b", main="Variance in PCA components", ylab="percent", xlab="component index")
+```
+Outliers can be handled with the transformation Spatial Sign. This transformation considers the sum squared 
+predictor values of a sample as its distance from the center. Lets look at the distribution of this distance
+for the data
+```{r outliers}
+segData.scaled <- scale(segData)
+sample.distance <- apply(segData, 1, function(x) sum(x^2))
+plot(density(sample.distance))
+skewness(sample.distance)
+```
+With a skew of 11.53, the sample distances are extremely skewed.
+
+The package caret can administer a series of transformations to the data,
+```{r caretPreProcess}
+trans <- preProcess(segData, method=c("BoxCox", "center", "scale", "pca"))
+transformed <- predict( trans, segData)
+sapply(transformed, skewness)
+head(transformed[,1:5])
+```       
+##Filtering
+Variables with near zero variance should be removed, and highly correlated variables pruned
+```{r filtering}
+nearZeroVar(segData)
+correlations <- cor(segData)
+correlations[1:4, 1:4]
+library(corrplot)
+corrplot(correlations, order="hclust", main="Correlations in the segmentation data")
+highCorr <- findCorrelation(correlations, cutoff=0.75)
+filteredSegData <- segData[, -highCorr]
+corrfilt <- cor(filteredSegData)
+corrplot(corrfilt, order="hclust", main="Correlations in the filtered segmentation data")
+```
+
+##Exercise 1
+```{r glass}
+library(mlbench)
+data(Glass)
+str(Glass)
+```
+Lets make histograms of the predictors
+```{r glassHist}
+library(e1071)
+library(ggplot2)
+library(GGally)
+glass.melt <- do.call("rbind", lapply(names(Glass[, -10]), function(cn){
+  data.frame(value=scale(Glass[,cn]), variable=cn, skew=skewness(Glass[, cn]), class=Glass[,10])
+}))
+glass.melt$varskew <- paste(glass.melt$variable, signif(glass.melt$skew, 3))
+glass.skew.gp <- ggplot(data=glass.melt, aes(value, color=skew)) +
+              geom_freqpoly(aes(group=variable), stat="bin", position="identity")+
+              facet_wrap(~varskew) 
+glass.skew.gp
+
+glass.scatter.gp1 <- ggpairs(Glass[, c(1:3, 10)], color="Type", alpha=0.4)
+glass.scatter.gp1
+glass.scatter.gp2 <- ggpairs(Glass[, c(4:6, 10)], color="Type", alpha=0.4)
+glass.scatter.gp2
+glass.scatter.gp3 <- ggpairs(Glass[, c(7:9, 10)], color="Type", alpha=0.4)
+glass.scatter.gp3
+
+for(i in 1:8){
+  for(j in (i+1):9){
+    plot(Glass[,i], Glass[, j], col=Glass$Type, main="Scatter for Glass variables", xlab=names(Glass)[i], ylab=names(Glass)[j])
+  }
+}
+for(x in names(Glass[, -10])){
+  for(y in names(Glass[, -10])){
+    if(y != x) plot(Glass[,x], Glass[,y], main="Scatter for Glass variables", xlab=x, ylab=y)
+  }
+}
+plot(Glass[, i], Glass[,j], col=Glass$Type, xlab=names(Glass)[i], ylab=names(Glass)[j])
+```
+Variable K has high skew, Ba has mild, and Ca marginal. Mg seems to have two peeks. Lets see which variables have
+negative values
+```{r varSign}
+sapply(Glass[, -10], function(x) all(x > 0))
+```
+Both Ba, and K have contain negative values, so these cannot be transformed  Box-Cox.
+What about the correlations between the variables,
+```{r glassCorrs}
+library(caret)
+correlations <- cor(Glass[,-10])
+corrplot(correlations, order="hclust", main="Correlations for glass predictors")
+highCorr <- findCorrelation(correlations, cutoff=0.75)
+highCorr
+```
+```{r glassPCA}
+pcaObject <- prcomp(Glass[, -10], center=TRUE, scale = TRUE)
+percentVariance <- pcaObject$sdev^2/sum(pcaObject$sdev^2)*100
+plot(percentVariance, type="b", main="Variance in PCA components", ylab="percent", xlab="component index")
+sum(percentVariance[1:6])
+```
+Seems like we will have to consider upto 6 principal components.
+
+Outliers
+```{r outliers}
+glass.scaled <- scale(Glass[, -10])
+sample.distance <- apply(glass.scaled, 1, function(x) sum(x^2))
+plot(density(sample.distance), main="Distribution of sample-distance for Glass")
+plot(density(log(sample.distance)), main="Distribution of log sample-distance for Glass")
+
+skewness(sample.distance)
+```
+
+There seem to several out-liers in the data.
+
+##Exercise 2 Soybean
+```{r dataSoy}
+library(mlbench)
+library(reshape2)
+data(Soybean)
+str(Soybean)
+plot(table(Soybean[,2]))
+soy.melt <- melt(Soybean, id.vars="Class")
+ggplot(melt(Soybean, id.vars="Class"), aes(value)) + geom_bar() + facet_wrap(~variable)
+names(Soybean)[nearZeroVar(Soybean)]
+sapply(Soybean, function(x) sum(is.na(x)))
+nacorrs <- cor(is.na(Soybean[, setdiff(names(Soybean), c("Class","leaves"))]))
+corrplot(nacorrs, order="hclust", main="Correlation between predictor NAs")
+soycorrs <- cor(Soybean[, setdiff(names(Soybean), c("Class","leaves"))])

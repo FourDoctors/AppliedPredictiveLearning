@@ -1,0 +1,131 @@
+---
+title: "Model Evaluation"
+output: html_document
+---
+Read the data used for illustration
+
+```{r dataForIllustration}
+library(AppliedPredictiveModeling)
+data(twoClassData)
+str(predictors)
+str(classes)
+```
+Stratified random splits of the data, based on the classes
+```{r dataSplits}
+set.seed(131)
+trainingRows <- createDataPartition(classes, p=0.80, list=FALSE)
+trainPredictors <- predictors[trainingRows,]
+trainClasses <- classes[trainingRows]
+testPredictors <- predictors[-trainingRows,]
+testClasses <- classes[-trainingRows]
+str(trainPredictors)
+str(testPredictors)
+```
+What is stratified about this sampling? The samples are stratified by their class.
+Maximum dissimilarity between samples could be used to sample the data. The most dissimilar sample is 
+added to the test set iteratively. This can be achieved using the _maxdissim_ function in the package _caret_.
+
+To resample, _createDataPartition_ can be used to generate several repeated training/test splits
+```{r resampleStratified}
+set.seed(1)
+repeatedSplits <- createDataPartition(trainClasses, p=0.80, times=3)
+str(repeatedSplits)
+cvSplits <- createFolds(trainClasses, k=10, returnTrain=TRUE)
+str(cvSplits)
+```
+There are other functions in _caret_ to sample/resample. Look at ?createDataPartition
+
+##Basic Model Building in R
+
+Example: 5-nearest neighbor classification. 
+```{r knnExample}
+trainPredictors <- as.matrix(trainPredictors)
+knnFit <- knn3(x=trainPredictors, y=trainClasses, k=5)
+knnFit
+testPredictions <- predict(knnFit, newdata=testPredictors, type='class')
+```
+For tuning parameters, several functions are useful. e1071::tune to evaulate four types of models across a range of parameters, ipred::errorest resample single models, caret::train built in modules for 144 models and includes capabilities for different resampling methods, performance measures, and algorithms for choosing the best model from the profile. 
+
+
+```{r tuningExampleData}
+library(caret)
+data(GermanCredit)
+GermanCredit <- GermanCredit[, -nearZeroVar(GermanCredit)]
+#the data are already converted to dummy variables, and we should remove duplicated values
+GermanCredit$CheckingAccountStatus.lt.0 <- NULL
+GermanCredit$SavingsAccountBonds.lt.100 <- NULL
+GermanCredit$EmploymentDuration.lt.1 <- NULL
+GermanCredit$EmploymentDuration.Unemployed <- NULL
+GermanCredit$Personal.Male.Married.Widowed <- NULL
+GermanCredit$Property.Unknown <- NULL
+GermanCredit$Housing.ForFree <- NULL
+
+## Split the data into training (80%) and test sets (20%)
+set.seed(100)
+inTrain <- createDataPartition(GermanCredit$Class, p = .8)[[1]]
+GermanCreditTrain <- GermanCredit[ inTrain, ]
+GermanCreditTest  <- GermanCredit[-inTrain, ]
+```
+
+Make an SVM fit
+```{r tuningExampleSVM}
+set.seed(1056)
+svmFit <- train(Class ~ ., data=GermanCreditTrain, method="svmRadial")
+```
+We can tell the function to pre-process the data,
+```{r tuningExampleSVM}
+set.seed(1056)
+svmFit <- train(Class ~ ., data=GermanCreditTrain, method="svmRadial", preProc=c("center", "scale"))
+```
+Which cost values ( a tuning parameter for svms) to evaluate?
+```{r tuningExampleSVM}
+set.seed(1056)
+svmFit <- train(Class ~ ., data=GermanCreditTrain, method="svmRadial", preProc=c("center", "scale"), tuneLength=10)
+```
+The passed option evaluates $2^{-2}$ through $2^{7}$ for the cost values. Performance is measured using bootstrap, that we can override 
+```{r tuningExampleSVM}
+set.seed(1056)
+svmFit <- train(Class ~ .,
+                data=GermanCreditTrain,
+                method="svmRadial",
+                preProc=c("center", "scale"),
+                tuneLength=10,
+                trControl=trainControl(method="repeatedcv", repeats=5)
+                )
+svmFit
+```
+This will repeat 10-fold-cross-validation 5 times. Predict and evaluate the model,
+```{r tuningExampleSVM}
+plot(svmFit, scales=list(x=list(log=2)))
+predictedClasses <- predict(svmFit, newdata=GermanCreditTest, type="raw")
+str(predictedClasses)
+predictedProbs <- predict(svmFit, newdata=GermanCreditTest, type="prob")
+head(predictedProbs)
+```
+Compare the SVM to a logistic regression model
+```{r modelComparisionExample}
+set.seed(1056)
+logisticReg <- train(Class ~ ., 
+                     data=GermanCreditTrain,
+                     method="glm",
+                     trControl=trainControl(method="repeatedcv", repeats=5)
+                     )
+logisticReg
+```
+
+They started with the same random seed, so the data used for the SVM and glm are the same. We can use _resamples_ function
+```{r modelComparisonExample}
+resamp <- resamples(list(SVM=svmFit, Logistic=logisticReg))
+summary(resamp)
+summary(diff(resamp))
+dotplot(resamp,
+        scales=list(x=list(relation="free")),
+        between=list(x=2))
+xyplot(resamp, models = c("SVM", "Logistic"), metric="Accuracy")
+xyplot(resamp, models = c("SVM", "Logistic"), metric="Kappa")
+densityplot(resamp, auto.key=list(columns=2),pch="|")
+splom(resamp, metric="Accuracy")
+splom(resamp, metric="Kappa")
+splom(resamp, variables="metrics")
+parallelplot(resamp, metric="Accuracy")
+parallelplot(resamp, metric="Kappa")
